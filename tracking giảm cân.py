@@ -8,21 +8,39 @@ st.set_page_config(page_title="Theo Dõi Sức Khỏe", page_icon="🥗", layout
 st.title("🥗 Theo Dõi Ăn Uống & Cân Nặng")
 
 # ─────────────────────────────────────────────
-# NHÓM THỰC PHẨM
+# NHÓM THỰC PHẨM + ĐƠN VỊ RIÊNG
 # ─────────────────────────────────────────────
 NHOM_AN = [
-    "Tinh bột",
-    "Đạm động vật",
-    "Đạm thực vật",
-    "Rau xanh",
-    "Hoa quả",
-    "Nước ngọt",
-    "Cà phê",
-    "Trà sữa",
+    {"key": "tinh_bot",     "label": "Tinh bột",      "don_vi": "nắm"},
+    {"key": "dam_dong_vat", "label": "Đạm động vật",  "don_vi": "nắm"},
+    {"key": "dam_thuc_vat", "label": "Đạm thực vật",  "don_vi": "nắm"},
+    {"key": "rau_xanh",     "label": "Rau xanh",       "don_vi": "nắm"},
+    {"key": "hoa_qua",      "label": "Hoa quả",        "don_vi": "nắm"},
+    {"key": "nuoc_ngot",    "label": "Nước ngọt",      "don_vi": "lon"},
+    {"key": "ca_phe",       "label": "Cà phê",         "don_vi": "cốc"},
+    {"key": "tra_sua",      "label": "Trà sữa",        "don_vi": "cốc"},
+    {"key": "nuoc",         "label": "Nước lọc",       "don_vi": "lít"},
 ]
 
-SO_NAM_OPTIONS = [0.5, 1.0, 1.5, 2.0, 2.5, 3.0]
-SO_NAM_LABELS  = ["1/2 nắm", "1 nắm", "1.5 nắm", "2 nắm", "2.5 nắm", "3 nắm"]
+def get_options(don_vi):
+    if don_vi == "nắm":
+        return [0, 0.5, 1, 1.5, 2, 2.5, 3]
+    elif don_vi == "lon":
+        return [0, 1, 2, 3]
+    elif don_vi == "cốc":
+        return [0, 1, 2, 3, 4]
+    elif don_vi == "lít":
+        return [0, 0.5, 1, 1.5, 2, 2.5, 3]
+    return [0, 1, 2, 3]
+
+def format_label(val, don_vi):
+    if val == 0:
+        return f"0 {don_vi} (không)"
+    if don_vi == "nắm" and val == 0.5:
+        return "1/2 nắm"
+    if don_vi == "lít" and val == 0.5:
+        return "0.5 lít"
+    return f"{val} {don_vi}"
 
 # ─────────────────────────────────────────────
 # LƯU / ĐỌC DỮ LIỆU
@@ -60,9 +78,9 @@ with tab0:
 
     so_tuan = st.number_input("Tuần số", min_value=1, max_value=52, value=1, step=1)
     tuan_key = f"tuan_{so_tuan}"
-    plan_hien_tai = data["weekly_plans"].get(tuan_key, {nhom: 1.0 for nhom in NHOM_AN})
+    plan_hien_tai = data["weekly_plans"].get(tuan_key, {n["key"]: 1.0 for n in NHOM_AN})
 
-    st.markdown(f"**Tuần {so_tuan} — Số nắm cho phép mỗi ngày:**")
+    st.markdown(f"**Tuần {so_tuan} — Mục tiêu mỗi ngày:**")
 
     col1, col2 = st.columns(2)
     new_plan = {}
@@ -70,16 +88,17 @@ with tab0:
     for i, nhom in enumerate(NHOM_AN):
         col = col1 if i % 2 == 0 else col2
         with col:
-            gia_tri_hien = plan_hien_tai.get(nhom, 1.0)
-            # Tìm index gần nhất trong options
-            idx = min(range(len(SO_NAM_OPTIONS)), key=lambda x: abs(SO_NAM_OPTIONS[x] - gia_tri_hien))
+            options = get_options(nhom["don_vi"])
+            labels = [format_label(o, nhom["don_vi"]) for o in options]
+            gia_tri_hien = plan_hien_tai.get(nhom["key"], 0)
+            idx = min(range(len(options)), key=lambda x: abs(options[x] - gia_tri_hien))
             chon = st.selectbox(
-                nhom,
-                options=SO_NAM_LABELS,
+                nhom["label"],
+                options=labels,
                 index=idx,
-                key=f"plan_{tuan_key}_{nhom}"
+                key=f"plan_{tuan_key}_{nhom['key']}"
             )
-            new_plan[nhom] = SO_NAM_OPTIONS[SO_NAM_LABELS.index(chon)]
+            new_plan[nhom["key"]] = options[labels.index(chon)]
 
     if st.button("💾 Lưu khẩu phần tuần này"):
         data["weekly_plans"][tuan_key] = new_plan
@@ -93,7 +112,7 @@ with tab0:
         for k, v in sorted(data["weekly_plans"].items(), key=lambda x: int(x[0].split("_")[1])):
             row = {"Tuần": k.replace("tuan_", "Tuần ")}
             for nhom in NHOM_AN:
-                row[nhom] = f"{v.get(nhom, 0)} nắm"
+                row[nhom["label"]] = format_label(v.get(nhom["key"], 0), nhom["don_vi"])
             rows.append(row)
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
@@ -106,7 +125,6 @@ with tab1:
     ngay_an = st.date_input("Ngày", value=datetime.date.today(), key="ngay_an")
     ngay_str = str(ngay_an)
 
-    # Chọn tuần thủ công
     danh_sach_tuan = sorted(data["weekly_plans"].keys(), key=lambda x: int(x.split("_")[1])) if data["weekly_plans"] else []
     tuan_options = [f"Tuần {k.split('_')[1]}" for k in danh_sach_tuan]
 
@@ -118,28 +136,40 @@ with tab1:
     else:
         tuan_chon = "Tuần 1"
         tuan_so = 1
-        khau_phan_tuan = {nhom: 1.0 for nhom in NHOM_AN}
+        khau_phan_tuan = {n["key"]: 1.0 for n in NHOM_AN}
         st.warning("⚠️ Chưa cài khẩu phần. Vào tab **⚙️** để thiết lập trước nhé!")
 
+    if "food_input" not in st.session_state:
+        st.session_state.food_input = {n["key"]: {"ten": "", "so_luong": 0.0} for n in NHOM_AN}
+
     st.markdown("---")
-    st.markdown("**Nhập số nắm từng nhóm hôm nay:**")
+    st.markdown("**Nhập thực phẩm hôm nay:**")
 
-    if "mon_list" not in st.session_state:
-        st.session_state.mon_list = {}
-
-    col1, col2 = st.columns(2)
-    for i, nhom in enumerate(NHOM_AN):
-        col = col1 if i % 2 == 0 else col2
-        with col:
-            gia_tri = st.session_state.mon_list.get(nhom, 0.0)
-            idx = min(range(len(SO_NAM_OPTIONS)), key=lambda x: abs(SO_NAM_OPTIONS[x] - gia_tri)) if gia_tri > 0 else 0
-            chon = st.selectbox(
-                nhom,
-                options=["0 nắm"] + SO_NAM_LABELS,
-                index=0 if gia_tri == 0 else idx + 1,
-                key=f"nhap_{ngay_str}_{nhom}"
+    for nhom in NHOM_AN:
+        st.markdown(f"**{nhom['label']}**")
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            ten = st.text_input(
+                "Tên",
+                value=st.session_state.food_input[nhom["key"]]["ten"],
+                placeholder=f"Tên {nhom['label'].lower()}...",
+                key=f"ten_{ngay_str}_{nhom['key']}",
+                label_visibility="collapsed"
             )
-            st.session_state.mon_list[nhom] = 0.0 if chon == "0 nắm" else SO_NAM_OPTIONS[SO_NAM_LABELS.index(chon)]
+            st.session_state.food_input[nhom["key"]]["ten"] = ten
+        with col2:
+            options = get_options(nhom["don_vi"])
+            labels = [format_label(o, nhom["don_vi"]) for o in options]
+            so_luong_hien = st.session_state.food_input[nhom["key"]]["so_luong"]
+            idx = min(range(len(options)), key=lambda x: abs(options[x] - so_luong_hien))
+            chon = st.selectbox(
+                "Số lượng",
+                options=labels,
+                index=idx,
+                key=f"luong_{ngay_str}_{nhom['key']}",
+                label_visibility="collapsed"
+            )
+            st.session_state.food_input[nhom["key"]]["so_luong"] = options[labels.index(chon)]
 
     # ── ĐÁNH GIÁ ──
     st.markdown("---")
@@ -147,42 +177,45 @@ with tab1:
 
     ket_qua = []
     for nhom in NHOM_AN:
-        so_an = st.session_state.mon_list.get(nhom, 0.0)
-        muc_tieu = khau_phan_tuan.get(nhom, 0.0)
+        so_an = st.session_state.food_input[nhom["key"]]["so_luong"]
+        ten = st.session_state.food_input[nhom["key"]]["ten"]
+        muc_tieu = khau_phan_tuan.get(nhom["key"], 0.0)
+        ten_hien = f"{nhom['label']}" + (f" ({ten})" if ten else "")
+        dv = nhom["don_vi"]
 
         if muc_tieu == 0 and so_an == 0:
             continue
         elif muc_tieu == 0 and so_an > 0:
-            ket_qua.append(("🔴", nhom, f"Không có trong kế hoạch nhưng ăn {so_an} nắm"))
+            ket_qua.append(("🔴", ten_hien, f"Ngoài kế hoạch — {format_label(so_an, dv)}"))
         elif so_an == 0 and muc_tieu > 0:
-            ket_qua.append(("⚠️", nhom, f"Chưa ăn! Mục tiêu {muc_tieu} nắm"))
+            ket_qua.append(("⚠️", ten_hien, f"Chưa dùng! Mục tiêu {format_label(muc_tieu, dv)}"))
         elif so_an < muc_tieu:
-            ket_qua.append(("⚠️", nhom, f"Thiếu! Ăn {so_an} / mục tiêu {muc_tieu} nắm"))
+            ket_qua.append(("⚠️", ten_hien, f"Thiếu! {format_label(so_an, dv)} / mục tiêu {format_label(muc_tieu, dv)}"))
         elif so_an > muc_tieu:
-            ket_qua.append(("🔴", nhom, f"Vượt! Ăn {so_an} / mục tiêu {muc_tieu} nắm"))
+            ket_qua.append(("🔴", ten_hien, f"Vượt! {format_label(so_an, dv)} / mục tiêu {format_label(muc_tieu, dv)}"))
         else:
-            ket_qua.append(("✅", nhom, f"Đúng mục tiêu ({so_an} nắm) 👍"))
+            ket_qua.append(("✅", ten_hien, f"Đúng mục tiêu — {format_label(so_an, dv)} 👍"))
 
-    for icon, nhom, nhan_xet in ket_qua:
-        st.write(f"{icon} **{nhom}**: {nhan_xet}")
+    for icon, ten, nhan_xet in ket_qua:
+        st.write(f"{icon} **{ten}**: {nhan_xet}")
 
     loi = [r for r in ket_qua if r[0] in ("⚠️", "🔴")]
     st.markdown("---")
     if not loi:
-        st.success("🎉 Hôm nay ăn đúng kế hoạch! Tuyệt vời!")
+        st.success("🎉 Hôm nay đúng kế hoạch! Tuyệt vời!")
     elif len(loi) == 1:
-        st.warning(f"😐 Gần ổn rồi, chỉ cần điều chỉnh **{loi[0][1]}**!")
+        st.warning(f"😐 Gần ổn rồi, chỉ cần điều chỉnh **{loi[0][1].split('(')[0].strip()}**!")
     else:
         st.error(f"😬 Cần điều chỉnh {len(loi)} nhóm để đúng kế hoạch.")
 
-    if st.button("💾 Lưu ngày hôm nay"):
+    if st.button("💾 Lưu hôm nay"):
         data["food_log"][ngay_str] = {
-            "mon_list": st.session_state.mon_list,
+            "chi_tiet": {n["key"]: st.session_state.food_input[n["key"]] for n in NHOM_AN},
             "tuan": tuan_so
         }
         save_data(data)
         st.success("Đã lưu!")
-        st.session_state.mon_list = {}
+        st.session_state.food_input = {n["key"]: {"ten": "", "so_luong": 0.0} for n in NHOM_AN}
         st.rerun()
 
 # ══════════════════════════════════════════════
@@ -236,16 +269,18 @@ with tab3:
         st.info("Nhập ít nhất 2 ngày cân nặng để xem biểu đồ nhé!")
 
     st.markdown("---")
-    st.subheader("🍽️ Lịch sử ăn uống theo tuần")
+    st.subheader("🍽️ Lịch sử ăn uống")
 
     if data["food_log"]:
-        # Hiển thị bảng lịch sử
         rows = []
         for ngay, v in sorted(data["food_log"].items()):
             row = {"Ngày": ngay, "Tuần": f"Tuần {v.get('tuan', '?')}"}
-            if isinstance(v.get("mon_list"), dict):
-                for nhom in NHOM_AN:
-                    row[nhom] = f"{v['mon_list'].get(nhom, 0)} nắm"
+            chi_tiet = v.get("chi_tiet", {})
+            for nhom in NHOM_AN:
+                info = chi_tiet.get(nhom["key"], {})
+                ten = info.get("ten", "")
+                so = info.get("so_luong", 0)
+                row[nhom["label"]] = f"{ten} ({format_label(so, nhom['don_vi'])})" if ten else format_label(so, nhom["don_vi"])
             rows.append(row)
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
     else:
